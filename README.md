@@ -47,6 +47,90 @@ For customizing experiments, refer to the configuration system documentation: [`
 
 Results will be automatically saved to the [`benchmark_results`](./benchmark_results) directory as specified in [`scripts/benchmark.sh`](./scripts/benchmark.sh).
 
+### Gemma4: Compare Zero-shot / Self-Consistency / Sample-and-Rank / Self-Selector
+
+The Gemma4 adapter ([`vlmeval/vlm/tta/tta_gemma4.py`](./vlmeval/vlm/tta/tta_gemma4.py)) supports three answer-level aggregation strategies on top of the plain zero-shot baseline. Each can be selected via a CLI argument to the benchmark scripts.
+
+**Script usage** — `bash <script> <config> <method> <gpu>`:
+
+| Arg | Values |
+|---|---|
+| `<config>` | Path to a Gemma4 config (`benchmark_configs/gemma4_e2b_config.json`, `benchmark_configs/gemma4_31b_config.json`, `benchmark_configs/gemma4_zeroshot_config.json`, ...) |
+| `<method>` | `zeroshot` (baseline) \| `majority` (Self-Consistency) \| `confidence` (Sample-and-Rank) \| `selector` (Self-Selector) |
+| `<gpu>` | GPU index, e.g. `0`, `1`, `4` |
+
+> `zeroshot` runs plain inference on the base `Gemma4` class with **no augmentation and no aggregation** — use it as the baseline. Pair it with `benchmark_configs/gemma4_zeroshot_config.json` / `gemma4_31b_zeroshot_config.json`, which omit the TTA fields and point to `"class": "Gemma4"` directly.
+
+Example:
+```bash
+bash scripts/benchmark_gemma4_e2b.sh benchmark_configs/gemma4_e2b_config.json selector 0
+```
+
+Results are saved under `benchmark_results/n_samples_${SUBSET_LEN}/<config_stem>_<method>/`, so multiple methods do not overwrite each other.
+
+**Zero-shot baselines** — run these first to get the no-TTA reference numbers:
+```bash
+# E2B baseline on GPU 0
+bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_zeroshot_config.json     zeroshot 0
+# 31B baseline on GPU 1
+bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_zeroshot_config.json zeroshot 1
+```
+Outputs go to `benchmark_results/n_samples_1000/gemma4_zeroshot_config_zeroshot/` and `..._31b_zeroshot_config_zeroshot/`.
+
+**Full 6-run TTA sweep on 3 GPUs (E2B + 31B × 3 methods)** — run each block in its own terminal:
+
+<details>
+<summary>Terminal 1 — GPU 0 (majority / Self-Consistency)</summary>
+
+```bash
+bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json majority 0 && \
+bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     majority 0
+```
+</details>
+
+<details>
+<summary>Terminal 2 — GPU 1 (confidence / Sample-and-Rank)</summary>
+
+```bash
+bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json confidence 1 && \
+bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     confidence 1
+```
+</details>
+
+<details>
+<summary>Terminal 3 — GPU 4 (selector / Self-Selector)</summary>
+
+```bash
+bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json selector 4 && \
+bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     selector 4
+```
+</details>
+
+Each terminal runs the large **31B** model first, then the smaller **E2B** on the same GPU once VRAM is freed. The three terminals run in parallel across GPUs 0 / 1 / 4.
+
+**Single-terminal alternative** (all in background, logs per job):
+```bash
+(bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json majority 0 && \
+ bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     majority 0) > logs_gpu0_majority.txt 2>&1 &
+
+(bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json confidence 1 && \
+ bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     confidence 1) > logs_gpu1_confidence.txt 2>&1 &
+
+(bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_config.json selector 4 && \
+ bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_config.json     selector 4) > logs_gpu4_selector.txt 2>&1 &
+
+wait && echo "All 6 runs finished"
+```
+
+After completion you will have six TTA result directories (plus two zero-shot baselines if you ran them):
+```
+benchmark_results/n_samples_1000/
+├── gemma4_zeroshot_config_zeroshot/      ├── gemma4_31b_zeroshot_config_zeroshot/
+├── gemma4_e2b_config_majority/           ├── gemma4_31b_config_majority/
+├── gemma4_e2b_config_confidence/         ├── gemma4_31b_config_confidence/
+└── gemma4_e2b_config_selector/           └── gemma4_31b_config_selector/
+```
+
 ## 🚀 Development
 The core logic of our methods is located in [`vlmeval/vlm/tta`](./vlmeval/vlm/tta)
 
