@@ -50,6 +50,7 @@ from .mgm import Mini_Gemini
 from .bunnyllama3 import BunnyLLama3
 from .vxverse import VXVERSE
 from .paligemma import PaliGemma
+from .gemma4 import Gemma4
 from .qh_360vl import QH_360VL
 from .phi3_vision import Phi3Vision, Phi3_5Vision
 from .phi4_multimodal import Phi4Multimodal
@@ -93,3 +94,4 @@ from .vlm_r1 import VLMR1Chat
 from .tta.tta_internvl_chat import TTAugAdapter_InternVLChat
 from .tta.tta_smolvlm import TTAugAdapter_SmolVLM2
 from .tta.tta_ovis import TTAugAdapter_Ovis2
+from .tta.tta_gemma4 import TTAugAdapter_Gemma4

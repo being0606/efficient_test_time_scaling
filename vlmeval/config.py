@@ -69,6 +69,9 @@ ungrouped = {
     "paligemma-3b-mix-448": partial(
         PaliGemma, model_path="google/paligemma-3b-mix-448"
     ),
+    "gemma-4-31B-it": partial(
+        Gemma4, model_path="google/gemma-4-31B-it"
+    ),
     "360VL-70B": partial(QH_360VL, model_path="qihoo360/360VL-70B"),
     "Llama-3-MixSenseV1_1": partial(
         LLama3Mixsense, model_path="Zero-Vision/Llama-3-MixSenseV1_1"
