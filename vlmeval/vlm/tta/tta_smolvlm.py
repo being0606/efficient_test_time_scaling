@@ -3,7 +3,7 @@ try:
     from trl import SFTConfig, SFTTrainer
     from unsloth import FastVisionModel
     from unsloth.trainer import UnslothVisionDataCollator
-except (ImportError, AttributeError) as e:
+except Exception as e:
     print(
         "************************************************"
         "Warning: unsloth/trl libraries not available. 'learned_model' aggregation method will not work.",

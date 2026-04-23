@@ -58,7 +58,11 @@ class IDEFICS(BaseModel):
         return text
 
 
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor
+try:
+    from transformers import AutoModelForVision2Seq
+except ImportError:
+    from transformers import AutoModelForImageTextToText as AutoModelForVision2Seq
 from transformers.image_utils import load_image
 
 

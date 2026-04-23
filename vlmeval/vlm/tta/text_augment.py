@@ -35,12 +35,20 @@ class TextAugment:
         local_paraphrasing_model_tokenizer=None,
         openai_paraphraser_model: str = "gpt-4o-mini",
         openai_api_key_path: str = "/zhome/88/8/215456/openai_key.txt",
-        gpt_paraphraser_strategy="gpt_paraphraser",
+        # gpt_paraphraser_strategy="gpt_paraphraser", # 오리지날 논문에 있던 OPENAI paraphraser.
+        gpt_paraphraser_strategy="simple_paraphraser",
         save_or_load=None,
         path_text_aug_to_file="benchmark_results/text_augmentations.json",
         number_of_paraphrased: int = None,
         in_other_words: bool = True,
     ):
+        # Initialize fields first so __del__ is safe even if init fails midway.
+        self.data_cache = {}
+        self.old_data_cache = {}
+        self.smollm_model = None
+        self.client = None
+        self.api_key = None
+
         # HYPERPARAMETERS
         # Text related
         self.save_or_load = save_or_load  # TEXT AUGMENTATION CACHING: "save", "load", None. "save" and "load" both save the augmented versions. But, "save" does not use the cached inputs.
@@ -71,22 +79,34 @@ class TextAugment:
             n_augmentations - 1
         )  # Number of augmented versions to generate (excluding the original)
 
-        with open(openai_api_key_path, "r") as key_file:
-            self.api_key = key_file.read().strip()
-        self.client = OpenAI(api_key=self.api_key)
+        openai_required_strategies = {
+            "gpt_paraphraser",
+            "gpt_paraphraser_beam_like",
+            "gpt_paraphraser_categorical",
+        }
+        if gpt_paraphraser_strategy in openai_required_strategies:
+            with open(openai_api_key_path, "r") as key_file:
+                self.api_key = key_file.read().strip()
+            self.client = OpenAI(api_key=self.api_key)
+
         self.paraphraser_model = openai_paraphraser_model
 
         # save or load for text augmentations
-        self.data_cache = {}
         if self.save_or_load is not None:
             if os.path.exists(self.path_text_aug_to_file):
                 with open(self.path_text_aug_to_file, "r") as file:
                     self.data_cache = dict(json.load(file))
 
-        self.smollm_model = None
+    def _require_openai_client(self):
+        if self.client is None:
+            raise RuntimeError(
+                "OpenAI client is not initialized. Use a non-OpenAI strategy or provide a valid API key path."
+            )
 
     def __del__(self):
-        self.save_augmentations_cache()
+        # Avoid raising noisy exceptions at interpreter shutdown / partial init.
+        with contextlib.suppress(Exception):
+            self.save_augmentations_cache()
 
     def save_augmentations_cache(self):
         self.old_data_cache = {}
@@ -102,6 +122,7 @@ class TextAugment:
                 json.dump(self.data_cache, file, indent=4)
 
     def gpt_paraphraser_beam_like(self, text_prompt: str, n_aug: int) -> list[str]:
+        self._require_openai_client()
         paraphrase_prompt = f"Paraphrase the following text prompt and create one different version of it. Avoid enumerating. Just provide one paraphrased version, do not say something like 'sure! here is your answer'. Your language should be natural. Do not paraphrase the word \"Question:\". Now, paraphrase the following text prompt, everything after this point is the text prompt you should paraphrase:\n\n"
 
         paraphrased_versions = []
@@ -129,6 +150,7 @@ class TextAugment:
         return paraphrased_versions
 
     def gpt_paraphraser_categorical(self, text_prompt: str, n_aug: int) -> list[str]:
+        self._require_openai_client()
         if self.save_or_load == "load":
             loaded = self.mock_gpt_paraphraser(text_prompt, n_aug)
             if loaded:
@@ -432,6 +454,7 @@ class TextAugment:
     def gpt_paraphraser(
         self, text_prompt: str, n_aug: int, in_other_words: bool = True
     ) -> list[str]:
+        self._require_openai_client()
         if self.save_or_load == "load":
             loaded = self.mock_gpt_paraphraser(text_prompt, n_aug)
             if loaded:
