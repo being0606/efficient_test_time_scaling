@@ -204,3 +204,6 @@ vlmeval/gemini_tmp.py
 .lprof
 
 unsloth_compiled_cache/
+
+benchmark_configs/*
+benchmark_results/n_samples_1000/*
