@@ -128,7 +128,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     else:
         model.set_dump_image(dataset.dump_image)
 
-    for i in tqdm(range(lt)):
+    inference_start = time.time()
+    n_inferred = 0
+    for i in tqdm(range(lt), desc=dataset_name):
         idx = data.iloc[i]['index']
         if idx in res:
             continue
@@ -145,8 +147,23 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
             print(response, flush=True)
 
         res[idx] = response
+        n_inferred += 1
         if (i + 1) % 10 == 0:
             dump(res, out_file)
+
+    elapsed = time.time() - inference_start
+    timing_file = f'{work_dir}/{model_name}_{dataset_name}_timing.json'
+    timing = {
+        'dataset': dataset_name,
+        'model': model_name,
+        'n_samples_inferred': n_inferred,
+        'n_samples_total': lt,
+        'total_seconds': elapsed,
+        'avg_seconds_per_sample': elapsed / n_inferred if n_inferred else None,
+        'samples_per_second': n_inferred / elapsed if elapsed > 0 and n_inferred else None,
+    }
+    with open(timing_file, 'w') as f:
+        json.dump(timing, f, indent=2)
 
     res = {k: res[k] for k in data_indices}
     dump(res, out_file)

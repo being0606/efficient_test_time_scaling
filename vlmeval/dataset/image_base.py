@@ -78,9 +78,14 @@ class ImageBaseDataset:
         if np.all([istype(x, int) for x in data["index"]]):
             data["index"] = [int(x) for x in data["index"]]
 
-        # read environment variable os SUBSET_LEN if it exists use subset
+        # read environment variable os SUBSET_LEN / SUBSET_RATIO if it exists use subset
         subset_len = int(os.environ.get("SUBSET_LEN", 0))
-        if subset_len > 0:
+        subset_ratio = float(os.environ.get("SUBSET_RATIO", 0))
+        if subset_ratio > 0:
+            n = max(1, int(len(data) * subset_ratio))
+            data = data[:: max(1, len(data) // n)]
+            data = data[:n]
+        elif subset_len > 0:
             # use subset_len samples (max)
             data = data[:: max(1, len(data) // subset_len)]
             data = data[:subset_len]
