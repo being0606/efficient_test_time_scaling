@@ -55,11 +55,11 @@ The Gemma4 adapter ([`vlmeval/vlm/tta/tta_gemma4.py`](./vlmeval/vlm/tta/tta_gemm
 
 | Arg | Values |
 |---|---|
-| `<config>` | Path to a Gemma4 config (`benchmark_configs/gemma4_e2b_config.json`, `benchmark_configs/gemma4_31b_config.json`, `benchmark_configs/gemma4_zeroshot_config.json`, ...) |
+| `<config>` | Path to a Gemma4 config (`benchmark_configs/gemma4_e2b_config.json`, `benchmark_configs/gemma4_31b_config.json`, `benchmark_configs/gemma4_e2b_zeroshot_config.json`, ...) |
 | `<method>` | `zeroshot` (baseline) \| `majority` (Self-Consistency) \| `confidence` (Sample-and-Rank) \| `selector` (Self-Selector) |
 | `<gpu>` | GPU index, e.g. `0`, `1`, `4` |
 
-> `zeroshot` runs plain inference on the base `Gemma4` class with **no augmentation and no aggregation** — use it as the baseline. Pair it with `benchmark_configs/gemma4_zeroshot_config.json` / `gemma4_31b_zeroshot_config.json`, which omit the TTA fields and point to `"class": "Gemma4"` directly.
+> `zeroshot` runs plain inference on the base `Gemma4` class with **no augmentation and no aggregation** — use it as the baseline. Pair it with `benchmark_configs/gemma4_e2b_zeroshot_config.json` / `gemma4_31b_zeroshot_config.json`, which omit the TTA fields and point to `"class": "Gemma4"` directly.
 
 Example:
 ```bash
@@ -71,11 +71,22 @@ Results are saved under `benchmark_results/n_samples_${SUBSET_LEN}/<config_stem>
 **Zero-shot baselines** — run these first to get the no-TTA reference numbers:
 ```bash
 # E2B baseline on GPU 0
-bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_zeroshot_config.json     zeroshot 0
+bash scripts/benchmark_gemma4_e2b.sh     benchmark_configs/gemma4_e2b_zeroshot_config.json     zeroshot 0
 # 31B baseline on GPU 1
 bash scripts/benchmark_gemma4_31b.sh benchmark_configs/gemma4_31b_zeroshot_config.json zeroshot 1
 ```
-Outputs go to `benchmark_results/n_samples_1000/gemma4_zeroshot_config_zeroshot/` and `..._31b_zeroshot_config_zeroshot/`.
+Outputs go to `benchmark_results/n_samples_1000/gemma4_e2b_zeroshot_config_zeroshot/` and `..._31b_zeroshot_config_zeroshot/`.
+
+**Quick timing run with `SUBSET_RATIO`** — evaluate on a fraction of each dataset (5% here) to measure inference time without full-scale runs. The override env var takes precedence over `SUBSET_LEN` and writes results to a separate `benchmark_results/ratio_005/...` tree, so it does not collide with full-cap runs. Per-dataset timing is dumped to `<workdir>/<model>/T*/<model>_<dataset>_timing.json`.
+```bash
+# E2B zeroshot, 5% subset
+SUBSET_RATIO=0.05 bash scripts/benchmark_gemma4_e2b.sh \
+    benchmark_configs/gemma4_e2b_zeroshot_config.json zeroshot 0
+
+# 31B zeroshot, 5% subset (run separately)
+SUBSET_RATIO=0.05 bash scripts/benchmark_gemma4_31b.sh \
+    benchmark_configs/gemma4_31b_zeroshot_config.json zeroshot 0
+```
 
 **Full 6-run TTA sweep on 3 GPUs (E2B + 31B × 3 methods)** — run each block in its own terminal:
 
@@ -125,7 +136,7 @@ wait && echo "All 6 runs finished"
 After completion you will have six TTA result directories (plus two zero-shot baselines if you ran them):
 ```
 benchmark_results/n_samples_1000/
-├── gemma4_zeroshot_config_zeroshot/      ├── gemma4_31b_zeroshot_config_zeroshot/
+├── gemma4_e2b_zeroshot_config_zeroshot/  ├── gemma4_31b_zeroshot_config_zeroshot/
 ├── gemma4_e2b_config_majority/           ├── gemma4_31b_config_majority/
 ├── gemma4_e2b_config_confidence/         ├── gemma4_31b_config_confidence/
 └── gemma4_e2b_config_selector/           └── gemma4_31b_config_selector/

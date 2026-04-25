@@ -2,10 +2,11 @@
 exp_config_path=${1:-"benchmark_configs/gemma4_e2b_config.json"}
 # Aggregation method: zeroshot (baseline) | majority (Self-Consistency) | confidence (Sample-and-Rank) | selector (Self-Selector)
 method=${2:-"majority"}
+gpu=${3:-"1"}
 
 case "$method" in
     zeroshot)   agg_method="" ;;
-    majority)   agg_method="answer_level_greedy_majority_vote" ;;
+    majority)   agg_method="answer_level_temperature_majority_vote" ;;
     confidence) agg_method="answer_level_greedy_confidence_scores" ;;
     selector)   agg_method="answer_level_greedy_mllm_selector" ;;
     *)
@@ -15,9 +16,12 @@ case "$method" in
 esac
 
 use_openai=False # True, False, "Local" Note: True is too expensive!, For local judge, use local_judge.sh script.
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=$gpu
 export AUTO_SPLIT=0
-export SUBSET_LEN=1000
+# Sample subsetting: SUBSET_RATIO (fraction) takes precedence over SUBSET_LEN (absolute cap).
+# Override either via env: SUBSET_RATIO=0.05 bash scripts/benchmark_gemma4_e2b.sh ...
+export SUBSET_LEN=${SUBSET_LEN:-1000}
+export SUBSET_RATIO=${SUBSET_RATIO:-0}
 export USE_COT=1
 export TOKENIZERS_PARALLELISM=false
 export DIST_TIMEOUT=99999999999
@@ -25,7 +29,12 @@ export UNSLOTH_DISABLE_FAST_GENERATION="1"
 # export SAVE_VISUAL_SAMPLES=true
 
 exp_config_stem=$(basename "$exp_config_path" .json)
-workdir="benchmark_results/n_samples_${SUBSET_LEN}/${exp_config_stem}_${method}/"
+if (( $(echo "$SUBSET_RATIO > 0" | bc -l) )); then
+    subset_tag="ratio_$(echo "$SUBSET_RATIO" | sed 's/\.//')"
+else
+    subset_tag="n_samples_${SUBSET_LEN}"
+fi
+workdir="benchmark_results/${subset_tag}/${exp_config_stem}_${method}/"
 
 # if [ -d "$workdir" ]; then
 #     read -p "The directory '$workdir' already exists. Do you want to delete it? (y/n): " confirm
