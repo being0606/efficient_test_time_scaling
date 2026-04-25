@@ -1,4 +1,3 @@
-import copy
 import re
 
 import torch
@@ -6,20 +5,21 @@ from PIL import Image
 
 from ...smp import *
 from ..gemma4 import Gemma4
-from .image_augment import ImageAugment
-from .text_augment import TextAugment
 
 
-class _IdentityTextAugment:
-    def __init__(self, n_augmentations):
-        self.n_augmentations = max(1, n_augmentations)
+class TTS_Gemma4(Gemma4):
+    """Pure Test-Time Scaling adapter for Gemma4.
 
-    def __call__(self, text_prompt):
-        return [text_prompt] * self.n_augmentations
+    Generates N independent samples from the SAME prompt via temperature
+    sampling, then aggregates at the answer level. No input augmentation.
 
+    Aggregation methods:
+      - answer_level_temperature_majority_vote (Self-Consistency)
+      - answer_level_greedy_confidence_scores  (Sample-and-Rank by log-prob)
+      - answer_level_greedy_mllm_selector      (Self-Selector via MLLM)
+    """
 
-class TTAugAdapter_Gemma4(Gemma4):
-    def __init__(self, model_args, text_aug_args, image_aug_args, **adapter_args):
+    def __init__(self, model_args, **adapter_args):
         self.model_args = model_args
         self.adapter_args = adapter_args
 
@@ -30,66 +30,24 @@ class TTAugAdapter_Gemma4(Gemma4):
         self.token_selection_aggregation_method = getattr(
             self,
             "token_selection_aggregation_method",
-            "answer_level_greedy_majority_vote",
+            "answer_level_temperature_majority_vote",
         )
 
         super().__init__(**model_args)
-
-        try:
-            self.text_augment = TextAugment(
-                n_augmentations=self.number_of_versions,
-                **text_aug_args,
-            )
-        except Exception as e:
-            print(
-                "TextAugment init failed. Falling back to identity text augmentation.",
-                e,
-            )
-            self.text_augment = _IdentityTextAugment(self.number_of_versions)
-
-        self.image_augment = ImageAugment(
-            n_augmentations=self.number_of_versions,
-            **image_aug_args,
-        )
 
     def _normalize_answer(self, text):
         text = text.strip().lower()
         text = re.sub(r"\s+", " ", text)
         return text
 
-    def create_message_versions(self, message):
-        versions = [copy.deepcopy(message) for _ in range(self.number_of_versions)]
-
-        def split_options(text):
-            text = text.strip()
-            if not text or len(text.split()) <= 2:
-                return None, None
-            if "Options:" in text:
-                main, opts = text.split("Options:", 1)
-                return main.strip(), "Options:" + opts
-            return text, ""
-
-        for msg_idx, msg in enumerate(message):
-            if msg.get("type") == "text":
-                base, opts = split_options(msg["value"])
-                if base is None:
-                    continue
-                paraphrases = self.text_augment(base)
-                for ver_idx in range(self.number_of_versions):
-                    pv = paraphrases[ver_idx] if ver_idx < len(paraphrases) else base
-                    versions[ver_idx][msg_idx]["value"] = pv + opts
-
-        return versions
-
-    def _build_prompt_and_images(self, message_version, images_for_version):
+    def _build_prompt(self, message, images):
         content = []
         image_idx = 0
-
-        for item in message_version:
+        for item in message:
             if item.get("type") == "text":
                 content.append({"type": "text", "text": item["value"]})
             elif item.get("type") == "image":
-                content.append({"type": "image", "image": images_for_version[image_idx]})
+                content.append({"type": "image", "image": images[image_idx]})
                 image_idx += 1
 
         messages = [{"role": "user", "content": content}]
@@ -106,7 +64,6 @@ class TTAugAdapter_Gemma4(Gemma4):
                 tokenize=False,
                 add_generation_prompt=True,
             )
-
         return prompt
 
     def _generate_one(self, prompt, images, return_confidence=False):
@@ -121,12 +78,17 @@ class TTAugAdapter_Gemma4(Gemma4):
             device = next(self.model.parameters()).device
         inputs = inputs.to(device)
 
+        gen_kwargs = dict(self.generate_kwargs)
+        gen_kwargs["do_sample"] = True
+        gen_kwargs["temperature"] = 0.7
+        gen_kwargs["top_p"] = 0.95
+
         input_len = inputs["input_ids"].shape[-1]
         with torch.inference_mode():
             if return_confidence:
                 generated = self.model.generate(
                     **inputs,
-                    **self.generate_kwargs,
+                    **gen_kwargs,
                     return_dict_in_generate=True,
                     output_scores=True,
                 )
@@ -138,7 +100,7 @@ class TTAugAdapter_Gemma4(Gemma4):
                 )
                 confidence = transition_scores.sum(dim=1)[0].item()
             else:
-                sequences = self.model.generate(**inputs, **self.generate_kwargs)
+                sequences = self.model.generate(**inputs, **gen_kwargs)
                 confidence = None
 
         response = self.processor.batch_decode(
@@ -158,32 +120,25 @@ class TTAugAdapter_Gemma4(Gemma4):
         return response, confidence
 
     def generate_inner_helper(self, message, dataset=None):
-        """Generate responses for all augmented versions."""
-        message_versions = self.create_message_versions(message)
-
+        """Generate N responses from the SAME prompt via temperature sampling."""
         original_images = [
             Image.open(item["value"]).convert("RGB")
             for item in message
             if item.get("type") == "image"
         ]
-        augmented_images, _ = self.image_augment(original_images)
-
-        responses = []
-        confidences = []
+        prompt = self._build_prompt(message, original_images)
 
         need_confidence = (
             self.token_selection_aggregation_method
             == "answer_level_greedy_confidence_scores"
         )
 
-        for ver_idx in range(self.number_of_versions):
-            prompt = self._build_prompt_and_images(
-                message_versions[ver_idx],
-                augmented_images[ver_idx],
-            )
+        responses = []
+        confidences = []
+        for _ in range(self.number_of_versions):
             response, confidence = self._generate_one(
                 prompt,
-                augmented_images[ver_idx],
+                original_images,
                 return_confidence=need_confidence,
             )
             responses.append(response)
@@ -208,7 +163,7 @@ class TTAugAdapter_Gemma4(Gemma4):
         return responses[winner_idx]
 
     def answer_level_greedy_confidence_scores_generate(self, responses, confidences):
-        """Select best response via confidence scores."""
+        """Select best response via confidence scores (sum of log-probs)."""
         best_idx = max(range(len(responses)), key=lambda i: confidences[i])
         return responses[best_idx]
 
@@ -296,5 +251,5 @@ class TTAugAdapter_Gemma4(Gemma4):
             return self.answer_level_greedy_confidence_scores_generate(responses, confidences)
         elif method == "answer_level_greedy_mllm_selector":
             return self.answer_level_greedy_mllm_selector_generate(message, responses)
-        else:  # Default to majority vote
+        else:  # answer_level_temperature_majority_vote (default)
             return self.answer_level_greedy_majority_vote_generate(responses)
