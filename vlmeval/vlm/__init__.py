@@ -94,4 +94,4 @@ from .vlm_r1 import VLMR1Chat
 from .tta.tta_internvl_chat import TTAugAdapter_InternVLChat
 from .tta.tta_smolvlm import TTAugAdapter_SmolVLM2
 from .tta.tta_ovis import TTAugAdapter_Ovis2
-from .tta.tta_gemma4 import TTAugAdapter_Gemma4
+from .tta.tta_gemma4 import TTS_Gemma4
