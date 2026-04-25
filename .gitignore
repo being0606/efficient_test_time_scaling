@@ -167,6 +167,7 @@ cache_dir/*
 outputs/*
 demo.ipynb
 *json
+!benchmark_configs/*.json
 .vscode
 *.swp
 GPT4o_MINI/
@@ -205,5 +206,6 @@ vlmeval/gemini_tmp.py
 
 unsloth_compiled_cache/
 
-benchmark_configs/*
+
 benchmark_results/n_samples_1000/*
+benchmark_results/ratio_005/*

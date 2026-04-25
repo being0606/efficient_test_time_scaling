@@ -1,0 +1,48 @@
+{
+    "model": {
+        "Gemma4_E2B_Zeroshot": {
+            "class": "Gemma4",
+            "model_path": "google/gemma-4-E2B-it",
+            "enable_thinking": false,
+            "max_new_tokens": 2048
+        }
+    },
+    "data": {
+        "OCRBench": {
+            "class": "OCRBench",
+            "dataset": "OCRBench"
+        },
+        "MME-RealWorld-Lite": {
+            "class": "MMERealWorld",
+            "dataset": "MME-RealWorld-Lite"
+        },
+        "AMBER": {
+            "class": "ImageYORNDataset",
+            "dataset": "AMBER"
+        },
+        "TextVQA_VAL": {
+            "class": "ImageVQADataset",
+            "dataset": "TextVQA_VAL"
+        },
+        "AI2D_TEST": {
+            "class": "ImageMCQDataset",
+            "dataset": "AI2D_TEST"
+        },
+        "OCRVQA_TEST": {
+            "class": "ImageVQADataset",
+            "dataset": "OCRVQA_TEST"
+        },
+        "ChartQA_TEST": {
+            "class": "ImageVQADataset",
+            "dataset": "ChartQA_TEST"
+        },
+        "GQA_TestDev_Balanced": {
+            "class": "ImageVQADataset",
+            "dataset": "GQA_TestDev_Balanced"
+        },
+        "COCO_VAL": {
+            "class": "ImageCaptionDataset",
+            "dataset": "COCO_VAL"
+        }
+    }
+}
